@@ -4,15 +4,15 @@ from aiobotocore.session import AioSession
 
 logger = logging.getLogger(__name__)
 
-async def copy_s3_data(source_bucket: str, source_key: str, dest_bucket: str, dest_key: str):
+async def copy_s3_data(source_bucket: str, source_prefix: str, dest_bucket: str, dest_prefix: str):
     """
-    Copies data from one S3 bucket path to another.
+    Copies all files from a source S3 bucket folder to a destination S3 bucket folder.
 
     Args:
         source_bucket (str): The source S3 bucket name.
-        source_key (str): The source S3 key.
+        source_prefix (str): The source S3 bucket prefix (folder).
         dest_bucket (str): The destination S3 bucket name.
-        dest_key (str): The destination S3 key.
+        dest_prefix (str): The destination S3 bucket prefix (folder).
 
     Raises:
         Exception: If an error occurs during the S3 copy operation.
@@ -21,13 +21,14 @@ async def copy_s3_data(source_bucket: str, source_key: str, dest_bucket: str, de
     try:
         async with AioSession() as session:
             async with session.create_client('s3') as s3_client:
-                copy_source = {'Bucket': source_bucket, 'Key': source_key}
+                copy_source = {'Bucket': source_bucket, 'Key': f"{source_prefix}/*"}
+                dest_prefix = dest_prefix.rstrip('/') + '/'
                 await s3_client.copy_object(
                     Bucket=dest_bucket,
-                    Key=dest_key,
+                    Key=dest_prefix,
                     CopySource=copy_source
                 )
-                logger.info(f"Copy operation from {source_bucket}/{source_key} to {dest_bucket}/{dest_key} successful.")
+                logger.info(f"Copy operation from {source_bucket}/{source_prefix}/* to {dest_bucket}/{dest_prefix} successful.")
     except Exception as e:
         logger.error(f"An error occurred during S3 copy operation: {str(e)}")
         raise
@@ -40,34 +41,34 @@ from aiobotocore.session import AioSession
 from service import copy_s3_data
 
 @pytest.mark.asyncio
-async def test_copy_s3_data_success():
+async def test_copy_folder_success():
     source_bucket = "source-bucket"
-    source_key = "source-key"
+    source_prefix = "source-folder"
     dest_bucket = "dest-bucket"
-    dest_key = "dest-key"
+    dest_prefix = "dest-folder"
     mock_s3_client = MagicMock()
     mock_s3_client.copy_object.return_value = asyncio.Future()
     mock_s3_client.copy_object.return_value.set_result({})
     with patch.object(AioSession, "create_client", return_value=mock_s3_client):
-        await copy_s3_data(source_bucket, source_key, dest_bucket, dest_key)
+        await copy_s3_data(source_bucket, source_prefix, dest_bucket, dest_prefix)
     mock_s3_client.copy_object.assert_called_once_with(
         Bucket=dest_bucket,
-        Key=dest_key,
-        CopySource={'Bucket': source_bucket, 'Key': source_key}
+        Key=dest_prefix.rstrip('/') + '/',
+        CopySource={'Bucket': source_bucket, 'Key': f"{source_prefix}/*"}
     )
 
 @pytest.mark.asyncio
-async def test_copy_s3_data_exception():
+async def test_copy_folder_exception():
     source_bucket = "source-bucket"
-    source_key = "source-key"
+    source_prefix = "source-folder"
     dest_bucket = "dest-bucket"
-    dest_key = "dest-key"
+    dest_prefix = "dest-folder"
     mock_s3_client = MagicMock()
     mock_s3_client.copy_object.return_value = asyncio.Future()
     mock_s3_client.copy_object.return_value.set_exception(Exception("Connection error"))
     with patch.object(AioSession, "create_client", return_value=mock_s3_client):
         with pytest.raises(Exception):
-            await copy_s3_data(source_bucket, source_key, dest_bucket, dest_key)
+            await copy_s3_data(source_bucket, source_prefix, dest_bucket, dest_prefix)
 
 # models.py
 from pydantic import BaseModel
