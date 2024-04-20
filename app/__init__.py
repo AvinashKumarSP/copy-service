@@ -264,3 +264,44 @@ async def test_write_row_count_to_s3():
 
     # Assert that put_object was called with the correct arguments
     mock_put_object.assert_called_once_with(Bucket="test_bucket", Key="test_prefix/row_count.txt", Body=b'20220406, 100')
+
+
+    from unittest.mock import MagicMock
+import boto3
+from botocore.exceptions import ClientError
+from fastapi.testclient import TestClient
+from main import app
+
+client = TestClient(app)
+
+def test_copy_objects_success():
+    mock_list_objects_v2 = MagicMock(return_value={"Contents": [{"Key": "file1.txt"}, {"Key": "file2.txt"}]})
+    mock_copy_object = MagicMock()
+
+    app.dependency_overrides[s3_client.list_objects_v2] = mock_list_objects_v2
+    app.dependency_overrides[s3_client.copy_object] = mock_copy_object
+
+    response = client.post("/copy", data={"source_bucket": "source-bucket", "source_prefix": "source-folder", "destination_bucket": "destination-bucket", "destination_directory": "destination-folder"})
+
+    assert response.status_code == 200
+    assert response.json() == {"message": "All objects copied successfully"}
+
+    mock_list_objects_v2.assert_called_once_with(Bucket="source-bucket", Prefix="source-folder")
+    assert mock_copy_object.call_count == 2
+    mock_copy_object.assert_any_call(CopySource={"Bucket": "source-bucket", "Key": "source-folder/file1.txt"}, Bucket="destination-bucket", Key="destination-folder/file1.txt")
+    mock_copy_object.assert_any_call(CopySource={"Bucket": "source-bucket", "Key": "source-folder/file2.txt"}, Bucket="destination-bucket", Key="destination-folder/file2.txt")
+
+def test_copy_objects_failure():
+    mock_list_objects_v2 = MagicMock(side_effect=ClientError({"Error": {}}, "list_objects_v2"))
+    mock_copy_object = MagicMock()
+
+    app.dependency_overrides[s3_client.list_objects_v2] = mock_list_objects_v2
+    app.dependency_overrides[s3_client.copy_object] = mock_copy_object
+
+    response = client.post("/copy", data={"source_bucket": "source-bucket", "source_prefix": "source-folder", "destination_bucket": "destination-bucket", "destination_directory": "destination-folder"})
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "{}"}
+
+    mock_list_objects_v2.assert_called_once_with(Bucket="source-bucket", Prefix="source-folder")
+    assert mock_copy_object.call_count == 0
