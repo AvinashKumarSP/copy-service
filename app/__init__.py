@@ -305,3 +305,36 @@ def test_copy_objects_failure():
 
     mock_list_objects_v2.assert_called_once_with(Bucket="source-bucket", Prefix="source-folder")
     assert mock_copy_object.call_count == 0
+
+
+import unittest
+from unittest.mock import MagicMock, patch
+from your_module import check_object_existence  # Import your function from your module
+
+class TestCheckObjectExistence(unittest.TestCase):
+
+    @patch('boto3.client')
+    def test_object_exists(self, mock_s3_client):
+        # Mock the head_object method to return successfully (indicating object exists)
+        mock_s3_client.return_value.head_object.return_value = {}
+
+        # Call the function to check if the object exists
+        object_exists = check_object_existence('test_bucket', 'test_object_key')
+
+        # Assert that the object exists
+        self.assertTrue(object_exists)
+
+    @patch('boto3.client')
+    def test_object_does_not_exist(self, mock_s3_client):
+        # Mock the head_object method to raise a 404 error (indicating object does not exist)
+        mock_s3_client.return_value.head_object.side_effect = \
+            MagicMock(side_effect=Exception({'Error': {'Code': '404'}}))
+
+        # Call the function to check if the object exists
+        object_exists = check_object_existence('test_bucket', 'test_object_key')
+
+        # Assert that the object does not exist
+        self.assertFalse(object_exists)
+
+if __name__ == '__main__':
+    unittest.main()
